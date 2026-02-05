@@ -24,7 +24,7 @@
 </head>
 <body class="p-4 flex flex-col items-center">
 
-    <div id="auth-screen" class="glass p-8 w-full max-w-sm mt-12 shadow-2xl">
+    <div id="auth-screen" class="glass p-8 w-full max-sm mt-12 shadow-2xl">
         <h1 class="text-3xl font-black text-center mb-8 italic tracking-tighter">Tələbələrin Qələmi</h1>
         
         <div id="login-form">
@@ -58,7 +58,7 @@
         <div class="glass p-8">
             <h3 class="text-xl font-black mb-6 uppercase text-gray-600 text-center tracking-widest">AI & Multimedia Təqdimat</h3>
             
-            <textarea id="topic" rows="3" placeholder="Təqdimat mövzusunu yazın (məs: Qlobal istiləşmə)..." class="w-full p-4 border rounded-2xl mb-4 italic outline-none"></textarea>
+            <textarea id="topic" rows="3" placeholder="Təqdimat mövzusunu yazın (məs: Süni İntellektin Gələcəyi)..." class="w-full p-4 border rounded-2xl mb-4 italic outline-none"></textarea>
             
             <div class="flex justify-between items-center mb-8 bg-gray-50 p-4 rounded-2xl font-bold">
                 <span>Slayd Sayı (1-30):</span>
@@ -75,31 +75,30 @@
 
     <div id="loader-screen" class="fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center text-white p-6">
         <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 mb-4"></div>
-        <h2 id="loader-text" class="text-xl font-bold italic text-center">Süni İntellekt şəkilləri və mətnləri hazırlayır...</h2>
+        <h2 id="loader-text" class="text-xl font-bold italic text-center">AI Slaydları hazırlayır...</h2>
         <p class="text-xs mt-2 text-gray-400">Zəhmət olmasa 15-20 saniyə gözləyin.</p>
     </div>
 
     <script>
-        // --- TAM FIREBASE KONFİQURASİYASI ---
+        // --- FIREBASE KONFİQURASİYASI ---
         const firebaseConfig = {
             apiKey: "AIzaSyAfmsZqzt96I-GIjBx106Yo7uz4LVLnj2A", 
             authDomain: "telebelerinqelemi.firebaseapp.com",
             projectId: "telebelerinqelemi",
             storageBucket: "telebelerinqelemi.appspot.com",
             messagingSenderId: "1096176011716",
-            appId: "1:1096176011716:web:6e1875e52c719702672338" // Sənin App ID-n
+            appId: "1:1096176011716:web:6e1875e52c719702672338"
         };
         
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        // --- DİGƏR API-LƏR ---
+        // --- API KEY-LƏR ---
         const GEMINI_API_KEY = "AIzaSyAfmsZqzt96I-GIjBx106Yo7uz4LVLnj2A";
         const PEXELS_API_KEY = "y7oGfTzlDj4q3avc92F4ALLnjFDqMLwwgp5Za8Mov9six2cl4yyB7tPC";
 
         let activeUser = null;
 
-        // --- FUNKSİYALAR ---
         function showReg() { document.getElementById('login-form').style.display='none'; document.getElementById('register-form').style.display='block'; }
         function showLogin() { document.getElementById('login-form').style.display='block'; document.getElementById('register-form').style.display='none'; }
         function openShop() { alert("Tezliklə!"); }
@@ -111,9 +110,11 @@
             if(!name.includes(" ") || !/^\d{1,3}\.(22|23|24|25)$/.test(group)) return alert('Ad Soyad (boşluqla) və Qrup (məs: 511.24) düzgün yazın!');
             
             const id = 'ID' + Math.floor(Math.random()*8999+1000);
-            await db.collection("users").doc(id).set({ id, name, group, pass, coins: 5, isVip: false });
-            alert("Uğurlu! ID-niz: " + id);
-            login(id);
+            try {
+                await db.collection("users").doc(id).set({ id, name, group, pass, coins: 5, isVip: false });
+                alert("Uğurlu! ID-niz: " + id);
+                login(id);
+            } catch (e) { alert("Bazaya qoşulma xətası! Firestore Rules-u yoxlayın."); }
         }
 
         async function handleLogin() {
@@ -155,14 +156,27 @@
             document.getElementById('download-area').style.display = 'none';
             
             try {
-                const prompt = `Create ${count} slides about "${topic}" in Azerbaijani language. Respond ONLY with raw JSON array: [{"title": "Başlıq", "content": "Mətn...", "kw": "English keyword for image"}]`;
-                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`, {
+                // MODEL: gemini-1.5-flash (Ödənişsiz və daha stabil)
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+                
+                const prompt = `Mövzu: "${topic}". Cəmi ${count} slayd üçün Azərbaycan dilində məlumat hazırla. 
+                Cavabı YALNIZ JSON formatında ver, başqa söz yazma. 
+                Format: [{"title": "Başlıq", "content": "Mətn...", "kw": "Açar söz (İngiliscə şəkil üçün)"}]`;
+
+                const res = await fetch(url, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                 });
+
                 const data = await res.json();
-                let rawText = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+                
+                if (data.error) throw new Error(data.error.message);
+
+                let rawText = data.candidates[0].content.parts[0].text;
+                // JSON-u təmizləmək üçün regex
+                rawText = rawText.replace(/```json|```/gi, "").trim();
+                
                 const slides = JSON.parse(rawText);
 
                 for(let s of slides) { s.img = await fetchPexels(s.kw); }
@@ -170,7 +184,7 @@
                 let pptx = new PptxGenJS();
                 slides.forEach(s => {
                     let slide = pptx.addSlide();
-                    if(s.img) slide.addImage({ path: s.img, x: 0, y: 0, w: '100%', h: '100%', opacity: 30 });
+                    if(s.img) slide.addImage({ path: s.img, x: 0, y: 0, w: '100%', h: '100%', opacity: 35 });
                     slide.addText(s.title, { x: 0.5, y: 0.5, w: '90%', fontSize: 24, bold: true, color: '1E3A8A' });
                     slide.addText(s.content, { x: 0.5, y: 1.5, w: '90%', fontSize: 14, color: '333333' });
                 });
@@ -178,8 +192,12 @@
                 document.getElementById('download-area').style.display = 'block';
                 document.getElementById('final-download-btn').onclick = () => pptx.writeFile({ fileName: topic.replace(/\s/g, '_') });
 
-            } catch (e) { alert("Xəta baş verdi! Mövzunu daha sadə yazın."); console.log(e); }
-            finally { document.getElementById('loader-screen').style.display = 'none'; }
+            } catch (e) { 
+                console.error(e);
+                alert("AI xətası! Ehtimal: API Key limiti və ya internet bağlantısı. Bir az sonra yenidən yoxlayın."); 
+            } finally { 
+                document.getElementById('loader-screen').style.display = 'none'; 
+            }
         }
     </script>
 </body>
